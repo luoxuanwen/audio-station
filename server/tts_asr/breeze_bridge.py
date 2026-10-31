@@ -53,6 +53,23 @@ def _log(*a):
 
 
 # ---------- 子进程管理 ----------
+def _resolve_model_dir() -> str:
+    """定位 Breeze 权重目录。
+
+    优先环境变量 BREEZE_MODEL（绝对路径或相对 breeze/ 的名字）；
+    否则默认用 int8 量化版（显存 ~6G，12G 卡与 Seed-VC/ASR 共存更安全），
+    量化目录不存在时回退 bf16 原版权重。
+    """
+    env = os.environ.get("BREEZE_MODEL", "").strip()
+    if env:
+        return env if os.path.isabs(env) else os.path.join(BREEZE_DIR, env)
+    for name in ("breeze-tts-2-int8", "breeze-tts-2"):
+        p = os.path.join(BREEZE_DIR, "models", name)
+        if os.path.isdir(p):
+            return p
+    return os.path.join(BREEZE_DIR, "models", "breeze-tts-2")
+
+
 def ensure_breeze_started() -> None:
     """启动 Breeze 推理子进程(若未运行)。"""
     global _proc, _log_fh
@@ -65,7 +82,7 @@ def ensure_breeze_started() -> None:
         pass
 
     py = os.path.join(BASE_DIR, "runtime", "python.exe")
-    model = os.path.join(BREEZE_DIR, "models", "breeze-tts-2")
+    model = _resolve_model_dir()
     launcher = os.path.join(BREEZE_DIR, "run_breeze_api.py")
     if not (os.path.isfile(py) and os.path.isfile(launcher)):
         _log("!! 未找到 runtime/python.exe 或 run_breeze_api.py, TTS 将不可用")
@@ -91,7 +108,8 @@ def ensure_breeze_started() -> None:
         stdout=out, stderr=subprocess.STDOUT if out is not None else None,
     )
     atexit.register(_shutdown)
-    _log(f"Breeze 子进程已启动 pid={_proc.pid}, 模型加载中(最长 {START_TIMEOUT}s) ... 日志: {_BREEZE_LOG}")
+    _log(f"Breeze 子进程已启动 pid={_proc.pid}, 模型={os.path.basename(model)}, "
+         f"加载中(最长 {START_TIMEOUT}s) ... 日志: {_BREEZE_LOG}")
 
 
 def _shutdown():
