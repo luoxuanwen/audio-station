@@ -84,6 +84,7 @@ audio-station/
 - **Starlette 路由顺序**：`gr.mount_gradio_app(path="/")` 会拦截其后注册的 API 路由 → 网关统一把 Mount 挪到路由表末尾
 - **HF 下载**：直连超时、hf-mirror 失效/极慢 → 一律 ModelScope
 - **权重许可**：breeze-tts-2 权重非商用许可，个人使用无碍
+- **Breeze 子进程会崩**：长期运行可能因显存/推理异常退出（曾观测到退出码 1），旧实现只认模块级 `_ready` 标记，进程死了仍继续转发 7860 → 每个 TTS 请求都返 500。现在每次请求前做 `/docs` 探活，检出进程退出即自动重启并等就绪；子进程标准输出（含 CUDA OOM 堆栈）落在 `logs/breeze_tts.log`，排查崩溃先看这个文件
 
 ## 核心引擎说明
 

@@ -44,6 +44,8 @@ START_TIMEOUT = 300  # Breeze 子进程就绪等待(秒), 首次加载模型较�
 
 _proc: subprocess.Popen | None = None
 _ready = False
+_BREEZE_LOG = os.path.join(BASE_DIR, "logs", "breeze_tts.log")
+_log_fh = None
 
 
 def _log(*a):
@@ -53,7 +55,7 @@ def _log(*a):
 # ---------- 子进程管理 ----------
 def ensure_breeze_started() -> None:
     """启动 Breeze 推理子进程(若未运行)。"""
-    global _proc
+    global _proc, _log_fh
     # 已有别的 Breeze 在监听 -> 不重复拉起
     try:
         if httpx.get(f"{BREEZE_URL}/docs", timeout=2.0).status_code < 500:
@@ -72,16 +74,26 @@ def ensure_breeze_started() -> None:
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     env["HF_HUB_OFFLINE"] = "1"
+    # 子进程输出落文件: 崩溃(尤其 CUDA OOM)时才有据可查, 否则随网关控制台一起丢失
+    try:
+        os.makedirs(os.path.dirname(_BREEZE_LOG), exist_ok=True)
+        if _log_fh is None:
+            _log_fh = open(_BREEZE_LOG, "ab", buffering=0)
+        out = _log_fh
+    except Exception as e:
+        _log("子进程日志文件不可用, 输出并入网关控制台:", e)
+        out = None
     _proc = subprocess.Popen(
         [py, launcher, model, "--host", "127.0.0.1", "--port", str(BREEZE_PORT)],
         cwd=BREEZE_DIR, env=env,
+        stdout=out, stderr=subprocess.STDOUT if out is not None else None,
     )
     atexit.register(_shutdown)
-    _log(f"Breeze 子进程已启动 pid={_proc.pid}, 模型加载中(最长 {START_TIMEOUT}s) ...")
+    _log(f"Breeze 子进程已启动 pid={_proc.pid}, 模型加载中(最长 {START_TIMEOUT}s) ... 日志: {_BREEZE_LOG}")
 
 
 def _shutdown():
-    global _proc
+    global _proc, _log_fh
     if _proc is not None and _proc.poll() is None:
         try:
             _proc.terminate()
@@ -92,6 +104,12 @@ def _shutdown():
             except Exception:
                 pass
     _proc = None
+    if _log_fh is not None:
+        try:
+            _log_fh.close()
+        except Exception:
+            pass
+        _log_fh = None
 
 
 async def wait_breeze_ready(timeout: float = START_TIMEOUT) -> bool:
@@ -101,6 +119,7 @@ async def wait_breeze_ready(timeout: float = START_TIMEOUT) -> bool:
     async with httpx.AsyncClient(timeout=3.0) as c:
         while asyncio.get_event_loop().time() < deadline:
             if _proc is not None and _proc.poll() is not None:
+                _ready = False
                 raise RuntimeError(f"Breeze 子进程异常退出 code={_proc.returncode}")
             try:
                 r = await c.get(f"{BREEZE_URL}/docs")
@@ -110,7 +129,43 @@ async def wait_breeze_ready(timeout: float = START_TIMEOUT) -> bool:
             except Exception:
                 pass
             await asyncio.sleep(2.0)
+    _ready = False
     return False
+
+
+async def _health(timeout: float = 2.0) -> bool:
+    """轻量探活: /docs 可访问即认为进程还在跑。"""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            return (await c.get(f"{BREEZE_URL}/docs")).status_code == 200
+    except Exception:
+        return False
+
+
+async def ensure_alive() -> bool:
+    """确保 Breeze 可服务: 进程退出/端口不可达时自动重启并等待就绪。
+
+    只靠模块级 _ready 标记是不够的 —— 子进程可能在任意时刻崩溃(CUDA OOM 等),
+    标记不会自动复位, 之后每个请求都会打到死端口并返回 500。
+    """
+    global _ready
+    if _proc is not None and _proc.poll() is not None:
+        _log(f"!! Breeze 子进程已退出 code={_proc.returncode}, 准备重启")
+        _ready = False
+    elif await _health():
+        _ready = True
+        return True
+    else:
+        _ready = False
+        _log("Breeze 端口不可达, 准备重启子进程 ...")
+
+    _shutdown()
+    ensure_breeze_started()
+    try:
+        return await wait_breeze_ready()
+    except RuntimeError as e:
+        _log("Breeze 重启失败:", e)
+        return False
 
 
 # ---------- persona 配置 ----------
@@ -224,7 +279,14 @@ async def _call_breeze(text: str, wav_path: str = "", ref_text: str = "", instru
                 if use_clone:
                     fh = open(wav_path, "rb")  # 每次重试重新打开
                     files = {"ref_audio": fh}
-                r = await c.post(f"{BREEZE_URL}/v1/audio/speech", data=data, files=files)
+                try:
+                    r = await c.post(f"{BREEZE_URL}/v1/audio/speech", data=data, files=files)
+                except httpx.TransportError as e:
+                    # 连接被拒/中断: 多半是子进程崩了, 先尝试拉起来再重试
+                    _log(f"!! 请求 Breeze 失败({type(e).__name__}), 尝试恢复子进程 (第 {attempt + 1} 次)")
+                    if attempt < 3 and await ensure_alive():
+                        continue
+                    raise RuntimeError(f"无法连接 Breeze 服务({type(e).__name__}): {e}") from e
             finally:
                 if fh is not None:
                     try:
@@ -245,12 +307,10 @@ async def _call_breeze(text: str, wav_path: str = "", ref_text: str = "", instru
 # ---------- OpenAI 兼容端点(由 gateway 挂载) ----------
 async def breeze_tts_endpoint(request: Request) -> Response:
     """处理 /v1/audio/speech 中 model=breeze-tts-2 的请求。"""
-    if not _ready:
-        try:
-            if not await wait_breeze_ready(timeout=START_TIMEOUT):
-                return Response("Breeze TTS 服务未就绪", status_code=503)
-        except RuntimeError as e:
-            return Response(f"Breeze 启动失败: {e}", status_code=503)
+    # 每次请求都确认子进程还活着(本地 /docs 探活开销极小), 死了就自动拉起
+    if not await ensure_alive():
+        return Response("Breeze TTS 服务未就绪(子进程启动失败, 详见 logs/breeze_tts.log)",
+                        status_code=503)
     try:
         j = await request.json()
     except Exception:
@@ -272,7 +332,11 @@ async def breeze_tts_endpoint(request: Request) -> Response:
     _log(f">>> [TTS] 文本: {text[:60]}{'...' if len(text) > 60 else ''} | voice={voice or '(默认)'} | 模式={mode}")
 
     async with _lock:
-        pcm = await _call_breeze(text, wav_path=wav_path, ref_text=ref_text, instruction=instruction)
+        try:
+            pcm = await _call_breeze(text, wav_path=wav_path, ref_text=ref_text, instruction=instruction)
+        except RuntimeError as e:
+            _log("!! 合成失败:", e)
+            return Response(f"Breeze 合成失败: {e}", status_code=503)
 
     media_type, audio = _transcode(pcm, fmt)
     return Response(content=audio, media_type=media_type)
