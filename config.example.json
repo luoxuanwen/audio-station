@@ -1,0 +1,36 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 18000,
+    "queue_max_size": 8
+  },
+  "msst": {
+    "root": ".",
+    "model": "bs_roformer_ep_317_sdr_12.9755",
+    "batch_size": 1,
+    "num_overlap": 4,
+    "normalize": false,
+    "use_tta": false,
+    "stem_cache_max_files": 20
+  },
+  "download": {
+    "timeout_seconds": 60,
+    "max_size_mb": 500,
+    "max_files": 100
+  },
+  "cache": {
+    "enabled": true,
+    "random_seed_persistent": false,
+    "max_files": 100
+  },
+  "mix": {
+    "vocal_gain": 1.15,
+    "instr_gain": 0.85
+  },
+  "seedvc": {
+    "diffusion_steps_default": 32,
+    "cfg_rate_default": 0.7,
+    "fp16": true,
+    "smart_f0": true
+  }
+}

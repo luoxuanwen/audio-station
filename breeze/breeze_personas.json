@@ -1,0 +1,6 @@
+{
+  "112":       { "wav": "112.wav",       "ref_text": "", "instruction": "" },
+  "galgame2": { "wav": "galgame2.wav", "ref_text": "", "instruction": "" },
+  "wr":       { "wav": "wr.wav",       "ref_text": "", "instruction": "" },
+  "_default": { "instruction": "一位温柔清晰、自然的年轻女性，语气亲切。" }
+}

@@ -1,0 +1,31 @@
+# 数据/模型目录(本地 junction 或下载产物, 绝不进 git)
+runtime/
+checkpoints/
+models/
+msst/
+bin/
+voice_profiles/
+voices/
+runtime-rocm/
+breeze/pylibs/
+breeze/breeze-tts/
+breeze/models/
+server/cover/seed-vc/
+server/cover/checkpoints/
+server/cover/models/
+server/cover/msst/
+server/cover/bin/
+server/cover/voice_profiles/
+server/cover/runtime-rocm/
+
+# 运行产物与配置
+server/cover/cache/
+server/cover/outputs/
+server/cover/downloads/
+server/cover/config.json
+logs/
+logs_*.log
+*.log
+__pycache__/
+*.pyc
+gw_*.mp3
