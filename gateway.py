@@ -16,10 +16,12 @@ import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
-# 12GB 卡上三服务共存, 翻唱时峰值余量仅 ~350MiB, 极易因显存碎片化触发 OOM。
+# 12GB 卡上三服务共存, 翻唱时峰值余量很小, 极易因显存碎片化触发 OOM。
 # expandable_segments 让分配器复用/扩展已有段, 显著降低紧内存下的碎片失败率。
-# 必须在任何 CUDA 初始化(torch import)之前设置。
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+# 注意: Windows 的 torch 构建不支持该选项(启动会警告 "expandable_segments not
+# supported on this platform"), 故仅非 Windows 平台设置。必须在 torch import 之前。
+if os.name != "nt":
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 sys.path.insert(0, os.path.join(BASE, "breeze", "pylibs"))
 sys.path.insert(0, os.path.join(BASE, "server", "cover"))
