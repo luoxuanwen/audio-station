@@ -28,6 +28,11 @@ audio-station/
 ├── server/cover/           # 翻唱: gateway_cover.py + cover_core.py + seed_vc_engine.py ...
 ├── server/tts_asr/         # breeze_bridge.py (TTS 桥接+子进程管理) + asr_sensevoice.py
 ├── breeze/                 # Breeze 推理: run_breeze_api.py + pylibs/ + breeze-tts/(仓库) + models/
+├── runtime/                # Python 嵌入式运行时(自含 torch cu128, 不入库)
+├── voices/                 # TTS 克隆参考音频 + 文字稿
+├── server/cover/           # 翻唱: gateway_cover.py + cover_core.py + seed_vc_engine.py ...
+│   ├── seed-vc/ checkpoints/ models/ msst/ bin/ runtime-rocm/   # 引擎与权重(数据, 不入库)
+│   └── voice_profiles/ cache/ outputs/                           # 音色与运行产物
 ├── tools/                  # download_models.py (权重下载) / persona_reftext.py (克隆文字稿)
 ├── 启动audio-station.bat   # 双击启动, 前台窗口, 关窗即停
 └── config.example.json
@@ -44,22 +49,22 @@ audio-station/
 
 ## 安装（Windows）
 
-1. **Python 运行时**：需 Python 3.10+ 且带 CUDA 12.8 的 PyTorch（Blackwell 显卡必须 `cu128`）。若已有可复用环境，把目录 junction 为 `runtime/` 即可。
+1. **Python 运行时**：需 Python 3.10+ 且带 CUDA 12.8 的 PyTorch（Blackwell 显卡必须 `cu128`），安装到本目录 `runtime/`（自包含嵌入式运行时即可，仓库发布版已含完整 `runtime/`）。
 2. **依赖**：`runtime/python.exe -m pip install -r requirements.txt`
    - embedded Python 无 venv 模块、忽略 `PYTHONPATH`，推荐 `--no-deps --target breeze/pylibs` 隔离安装 qwen-tts/transformers 等推理依赖（`breeze/pylibs` 已含验证过的版本组合）
    - **numpy 必须 `<2.4`**（numba 上限 2.3）；transformers 4.57 需补 tokenizers>=0.22
 3. **Breeze 推理仓库**：`git clone https://github.com/breezeblue-ai/breeze-tts breeze/breeze-tts`
-4. **模型权重**（全部走 ModelScope，HF 直连/hf-mirror 均不可用或极慢）：
+4. **模型权重**（实测 HF 直连超时，一律走 ModelScope 或 hf-mirror）：
 
    | 模型 | 来源 | 落位 |
    |---|---|---|
    | breeze-tts-2 (~5GB) | `modelscope: BreezeBlue/breeze-tts-2` | `breeze/models/breeze-tts-2/` |
-   | Seed-VC DiT f0 44k | `modelscope: AI-ModelScope/SeedVC` | `checkpoints/` |
-   | bigvgan_v2_44k / whisper-small / rmvpe / campplus | 同上脚本 | `models/` |
-   | MSST BS-Roformer | 见 tools/download_models.py | `msst/` |
+   | Seed-VC DiT f0 44k + bigvgan_v2_44k + whisper-small + rmvpe + campplus | `tools/download_models.py`（hf-mirror 一键拉取） | `server/cover/checkpoints/` 与 `server/cover/models/` |
+   | MSST BS-Roformer (bs_roformer_ep_317_sdr_12.9755) | [ZFTurbo/MSS-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training) Releases 直链 | `server/cover/msst/pretrain/vocal_models/` |
+   | Seed-VC 源码包(引擎依赖) | `git clone https://github.com/Plachtaa/seed-vc server/cover/seed-vc` | GPL-3.0 |
    | SenseVoiceSmall (~500MB) | funasr 首次运行自动从 ModelScope 下载 | HF/MS 缓存 |
 
-5. **音色**：`voice_profiles/*.wav`（翻唱参考音色）、`voices/*.wav + *.txt`（TTS 克隆参考+文字稿，`tools/persona_reftext.py` 生成）
+5. **音色**：`server/cover/voice_profiles/*.wav`（翻唱参考音色）、`voices/*.wav + *.txt`（TTS 克隆参考+文字稿，`tools/persona_reftext.py` 生成）
 6. **启动**：双击 `启动audio-station.bat` → http://127.0.0.1:18000
 
 ## 对接 AstrBot（经 frp）
