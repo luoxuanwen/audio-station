@@ -28,8 +28,7 @@ audio-station/
 ├── server/cover/           # 翻唱: gateway_cover.py + cover_core.py + seed_vc_engine.py ...
 ├── server/tts_asr/         # breeze_bridge.py (TTS 桥接+子进程管理) + asr_sensevoice.py
 ├── breeze/                 # Breeze 推理: run_breeze_api.py + pylibs/ + breeze-tts/(仓库) + models/
-├── tools/                  # download_models.py / persona_reftext.py
-├── scripts/                # 部署辅助
+├── tools/                  # download_models.py (权重下载) / persona_reftext.py (克隆文字稿)
 ├── 启动audio-station.bat   # 双击启动, 前台窗口, 关窗即停
 └── config.example.json
 ```
@@ -81,6 +80,41 @@ audio-station/
 - **HF 下载**：直连超时、hf-mirror 失效/极慢 → 一律 ModelScope
 - **权重许可**：breeze-tts-2 权重非商用许可，个人使用无碍
 
+## 核心引擎说明
+
+### TTS — Breeze TTS 2（BreezeBlue）
+
+- **是什么**：Breeze TTS 2 是 [BreezeBlue](https://breezeblue.ai/breeze-tts-2) 发布的开源权重实时 TTS 模型，支持中英文、零样本音色克隆（参考音频 + 逐字文字稿）、自然语言音色设计与指令控 prosody，在 Artificial Analysis TTS 榜单开源模型中排名第 1。
+- **出处引用**：
+  - 推理代码仓库：<https://github.com/breezeblue-ai/breeze-tts>（Apache-2.0）
+  - 模型权重：<https://huggingface.co/BreezeBlue/breeze-tts-2>（ModelScope 镜像：`BreezeBlue/breeze-tts-2`）
+  - 官方博客：<https://breezeblue.ai/breeze-tts-2>
+- **⚠️ 许可性质（重要）**：**源码为 Apache-2.0，但模型权重、衍生模型及自托管输出仅限研究与非商用用途**（上游 README 原文：“Breeze TTS 2 model weights, derivative models, and self-hosted outputs are for research and non-commercial use only”）。本仓库及其服务面向个人自托管场景；商业部署请先阅读并遵守上游模型许可条款。
+- **显存**：eager 推理约 7.7 GiB，12GB 卡为最低推荐配置（`--fast-all` 快路径需 14.4GB，12GB 卡勿用）。
+
+### ASR — SenseVoiceSmall（FunAudioLLM）
+
+阿里通义实验室开源多语音频理解模型（50+ 语言、富情感与声学事件标签、带标点输出），经 [funasr](https://github.com/modelscope/FunASR)（MIT）加载，权重由 ModelScope `iic/SenseVoiceSmall` 首次运行自动下载。
+
+### 翻唱 — Seed-VC V1 + MSST
+
+零样本歌声转换引擎 [Seed-VC](https://github.com/Plachtaa/seed-vc)（GPL-3.0）V1 44.1kHz SVC 模型，配合 MSST（BS-Roformer 人声/伴奏分离）完成「分离 → 换声 → 变调 → 混音」全链路。
+
+## 开源组件与许可
+
+本仓库代码以 MIT 发布。集成的第三方引擎与权重：
+
+| 组件 | 角色 | 上游 | 许可 |
+| :--- | :--- | :--- | :--- |
+| **Breeze TTS 2** | TTS 引擎 | [breezeblue-ai/breeze-tts](https://github.com/breezeblue-ai/breeze-tts) | 源码 Apache-2.0；**权重非商用** |
+| **Seed-VC** | 歌声转换 | [Plachtaa/seed-vc](https://github.com/Plachtaa/seed-vc) | GPL-3.0 |
+| **MSST / BS-Roformer** | 人声分离 | [ZFTurbo/Music-Source-Separation-Training](https://github.com/ZFTurbo/Music-Source-Separation-Training) | MIT |
+| **SenseVoiceSmall** | ASR 模型 | [FunAudioLLM/SenseVoice](https://github.com/FunAudioLLM/SenseVoice)（ModelScope `iic/SenseVoiceSmall`） | 权重 Apache-2.0（可商用） |
+| **funasr** | ASR 框架 | [modelscope/FunASR](https://github.com/modelscope/FunASR) | MIT |
+| FastAPI / uvicorn / gradio / soundfile / librosa | Web 与音频栈 | PyPI | 各自开源协议 |
+
+**商用提醒**：**Breeze TTS 2 权重为非商用许可**（源码 Apache-2.0 但权重仅限研究/非商用，见上表）；Seed-VC 为 GPL-3.0；SenseVoiceSmall 权重 Apache-2.0 可商用。本项目整体仅供个人学习研究与非商业自托管。
+
 ## License
 
-MIT（本仓库代码）。所含各模型权重遵循其各自许可。
+MIT（本仓库代码）。所含各模型权重遵循其各自许可，见上表。

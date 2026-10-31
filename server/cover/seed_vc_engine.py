@@ -3,7 +3,7 @@
 
 Adapted from Plachtaa/seed-vc app_svc.py (load_models + voice_conversion),
 trimmed to the f0-conditioned 44.1k singing path and made non-streaming.
-All models are loaded from local directories under D:/seed-vc/models.
+All models are loaded from local directories under the project root (checkpoints/, models/, seed-vc/).
 
 convert() 增加泛化的智能音域逻辑（auto_tone）：跨性别整八度平移、
 高音歌自适应步数、F0 软钳制与峰值保护。
