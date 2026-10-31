@@ -74,6 +74,8 @@ def ensure_breeze_started() -> None:
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     env["HF_HUB_OFFLINE"] = "1"
+    # 与网关同款: 12GB 卡紧内存下抑制显存碎片导致的 OOM
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     # 子进程输出落文件: 崩溃(尤其 CUDA OOM)时才有据可查, 否则随网关控制台一起丢失
     try:
         os.makedirs(os.path.dirname(_BREEZE_LOG), exist_ok=True)
